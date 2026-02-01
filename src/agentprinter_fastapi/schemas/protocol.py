@@ -9,6 +9,13 @@ class ErrorPayload(BaseModel):
     message: str = Field(..., description="Human-readable error message")
     details: dict[str, Any] = Field(default_factory=dict, description="Additional error context")
 
+class Navigation(BaseModel):
+    """Navigation routing contract for frontend navigation events."""
+    to: str = Field(..., description="Target route (e.g., /dashboard, /settings)")
+    params: dict[str, Any] = Field(default_factory=dict, description="Route parameters")
+    replace: bool = Field(default=False, description="Replace current history entry instead of push")
+    open: str = Field(default="same", description="Open in same window/tab or new")
+
 class MessageHeader(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     trace_id: str = Field(..., description="Distributed tracing ID")

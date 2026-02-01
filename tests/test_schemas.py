@@ -81,3 +81,34 @@ def test_error_payload_structure():
     assert error.code == "AUTH_FAILED"
     assert error.message == "Authentication failed"
     assert error.details == {"reason": "invalid_token"}
+
+def test_action_payload_is_exported():
+    """NEW: ActionPayload should be part of protocol contracts for schema export."""
+    from agentprinter_fastapi.schemas import ActionPayload
+    
+    action = ActionPayload(
+        action_id="act-123",
+        trigger="click",
+        target="agent:run_analysis"
+    )
+    
+    assert action.action_id == "act-123"
+    assert action.trigger == "click"
+    assert action.target == "agent:run_analysis"
+    assert action.mode == "stream"
+
+def test_navigation_payload_structure():
+    """NEW: Navigation should define routing contracts."""
+    from agentprinter_fastapi.schemas.protocol import Navigation
+    
+    nav = Navigation(
+        to="/dashboard",
+        params={"user_id": "123"},
+        replace=False,
+        open="same"
+    )
+    
+    assert nav.to == "/dashboard"
+    assert nav.params == {"user_id": "123"}
+    assert nav.replace is False
+    assert nav.open == "same"
