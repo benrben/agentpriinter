@@ -9,6 +9,7 @@ from agentprinter_fastapi.schemas import (
     MessageHeader,
     ActionPayload,
     ErrorPayload,
+    Navigation,
     Page, 
     ComponentNode,
     Bindings,
@@ -25,6 +26,8 @@ class ProtocolContract(BaseModel):
     page: Page
     event: AgentEvent
     error: ErrorPayload
+    action: ActionPayload
+    navigation: Navigation
     patch: StatePatch
     # Include list types if they appear alone in API responses
     nodes: List[ComponentNode] 

@@ -1,4 +1,4 @@
-from .protocol import Message, MessageHeader, ErrorPayload
+from .protocol import Message, MessageHeader, ErrorPayload, Navigation
 from .actions import ActionPayload
 from .ui import Page, ComponentNode, Bindings
 from .agent import AgentEvent
@@ -8,6 +8,7 @@ __all__ = [
     "Message", 
     "MessageHeader",
     "ErrorPayload",
+    "Navigation",
     "ActionPayload", 
     "Page", 
     "ComponentNode", 
