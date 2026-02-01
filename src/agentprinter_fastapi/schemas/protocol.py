@@ -16,11 +16,16 @@ class Navigation(BaseModel):
     replace: bool = Field(default=False, description="Replace current history entry instead of push")
     open: str = Field(default="same", description="Open in same window/tab or new")
 
+class ResumePayload(BaseModel):
+    """Payload for protocol.resume messages."""
+    last_seen_seq: int = Field(..., description="The last sequence number processed by the sender")
+
 class MessageHeader(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     trace_id: str = Field(..., description="Distributed tracing ID")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version: str = "1.0.0"
+    seq: int | None = Field(default=None, description="Monotonic sequence number for ordering")
     app_id: str | None = Field(default=None, description="Application identity")
     session_id: str | None = Field(default=None, description="Session identity")
     workspace_id: str | None = Field(default=None, description="Workspace identity for multi-tenancy")

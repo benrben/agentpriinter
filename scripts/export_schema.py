@@ -13,8 +13,13 @@ from agentprinter_fastapi.schemas import (
     Page, 
     ComponentNode,
     Bindings,
+    ComponentStyle,
+    ThemeTokens,
     AgentEvent,
-    StatePatch
+    StatePatch,
+    Tool,
+    SchemaContract,
+    ResumePayload
 )
 
 class ProtocolContract(BaseModel):
@@ -26,8 +31,13 @@ class ProtocolContract(BaseModel):
     page: Page
     event: AgentEvent
     error: ErrorPayload
+    resume: ResumePayload
     action: ActionPayload
     navigation: Navigation
+    style: ComponentStyle
+    theme: ThemeTokens
+    tool: Tool
+    schema_contract: SchemaContract
     patch: StatePatch
     # Include list types if they appear alone in API responses
     nodes: List[ComponentNode] 

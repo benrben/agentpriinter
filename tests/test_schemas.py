@@ -112,3 +112,90 @@ def test_navigation_payload_structure():
     assert nav.params == {"user_id": "123"}
     assert nav.replace is False
     assert nav.open == "same"
+
+def test_style_contract_structure():
+    """NEW: Component nodes should support style contracts with theme tokens and allowlisted properties."""
+    from agentprinter_fastapi.schemas.ui import ComponentStyle, ThemeTokens
+    
+    tokens = ThemeTokens(
+        color_primary="#007AFF",
+        spacing_unit=8,
+        radius_default=4,
+        font_size_base=14
+    )
+    
+    assert tokens.color_primary == "#007AFF"
+    assert tokens.spacing_unit == 8
+    
+    style = ComponentStyle(
+        theme=tokens,
+        className="p-4 rounded",
+        variant="primary"
+    )
+    
+    assert style.theme.color_primary == "#007AFF"
+    assert style.className == "p-4 rounded"
+    assert style.variant == "primary"
+
+def test_component_node_with_style():
+    """NEW: ComponentNode should accept optional style field."""
+    from agentprinter_fastapi.schemas.ui import ComponentNode, ComponentStyle, ThemeTokens
+    
+    tokens = ThemeTokens(color_primary="#FF0000", spacing_unit=4)
+    style = ComponentStyle(theme=tokens, variant="danger")
+    
+    node = ComponentNode(
+        id="btn-1",
+        type="button",
+        style=style
+    )
+    
+    assert node.id == "btn-1"
+    assert node.style is not None
+    assert node.style.theme.color_primary == "#FF0000"
+
+def test_tool_contract_structure():
+    """Test that Tool model can be imported and has required fields."""
+    try:
+        from agentprinter_fastapi.schemas.tools import Tool
+    except ImportError:
+        pytest.fail("Could not import Tool from agentprinter_fastapi.schemas.tools")
+    
+    tool = Tool(
+        name="search",
+        description="Search documents",
+        input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+    )
+    
+    assert tool.name == "search"
+    assert tool.description == "Search documents"
+    assert tool.input_schema is not None
+
+def test_schema_contract_structure():
+    """Test that SchemaContract model can be imported and has required fields."""
+    try:
+        from agentprinter_fastapi.schemas.tools import SchemaContract
+    except ImportError:
+        pytest.fail("Could not import SchemaContract from agentprinter_fastapi.schemas.tools")
+    
+    schema = SchemaContract(
+        title="User Form",
+        json_schema={"type": "object", "properties": {"name": {"type": "string"}}},
+        ui_schema={"name": {"ui:widget": "text"}},
+    )
+    
+    assert schema.title == "User Form"
+    assert schema.json_schema is not None
+    assert schema.ui_schema is not None
+
+def test_protocol_resume_and_sequence():
+    """NEW: MessageHeader should support monotonic sequence and ResumePayload should be defined."""
+    from agentprinter_fastapi.schemas.protocol import MessageHeader, ResumePayload
+    
+    # Check MessageHeader seq
+    header = MessageHeader(trace_id="seq-test", seq=42)
+    assert header.seq == 42
+    
+    # Check ResumePayload
+    resume = ResumePayload(last_seen_seq=100)
+    assert resume.last_seen_seq == 100
