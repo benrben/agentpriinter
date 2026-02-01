@@ -1,0 +1,39 @@
+# Bug Hunt: Seq/Resume Contract Breakage + Transport Foot-guns
+
+## Context Snapshot
+- **Target**: General scan anchored from `Scopes/INDEX.md` top scopes (Backend WebSocket Runtime, Remote UI Runtime, Protocol Schema & Codegen, Demo Apps)
+- **Mode**: General scan (quick wins)
+- **Constraints**: Evidence-only, minimal-fix bias (“less code = better work”)
+
+## Findings (Ranked)
+| # | Severity | Type | Where | Evidence | Why it matters | Smallest Fix |
+|---|----------|------|-------|----------|----------------|--------------|
+| 1 | High | Correctness | Backend resume/seq behavior (tests failing) | `[agentprinter-fastapi/tests/test_resume_handling.py:L7-L69](../../../agentprinter-fastapi/tests/test_resume_handling.py#L7-L69)`, `[agentprinter-fastapi/src/agentprinter_fastapi/manager.py:L83-L114](../../../agentprinter-fastapi/src/agentprinter_fastapi/manager.py#L83-L114)` | Backend has explicit tests expecting `header.seq` assignment + replay semantics; current implementation doesn’t assign `seq` at all, so ordering/resume can’t work (and CI would fail). | Implement per-session monotonic `header.seq` stamping in `ConnectionManager.broadcast()` before enqueue/broadcast; then implement `protocol.resume` replay (or adjust/remove the failing tests if out-of-scope). |
+| 2 | High | Contract mismatch | Frontend resume payload shape + ordering field | `[agentprinter-react/src/provider.tsx:L34-L35](../../../agentprinter-react/src/provider.tsx#L34-L35)`, `[agentprinter-react/src/provider.tsx:L78-L96](../../../agentprinter-react/src/provider.tsx#L78-L96)`, `[agentprinter-react/src/provider.tsx:L119-L126](../../../agentprinter-react/src/provider.tsx#L119-L126)`, `[agentprinter-react/src/contracts.ts:L102-L104](../../../agentprinter-react/src/contracts.ts#L102-L104)`, `[agentprinter-fastapi/src/agentprinter_fastapi/schemas/protocol.py:L19-L22](../../../agentprinter-fastapi/src/agentprinter_fastapi/schemas/protocol.py#L19-L22)` | Frontend sends `protocol.resume.payload.last_seen_version` and tracks `header.version` as monotonic (via `parseInt`), but the generated contracts + backend schema define `ResumePayload.last_seen_seq`. This makes the resume message “contract-invalid” and makes ordering/resume behavior inconsistent across the stack. | Switch frontend to track `header.seq` and send `payload.last_seen_seq` (see existing task). Update tests accordingly. |
+| 3 | High | Missing feature / drift | Backend ignores `protocol.resume` entirely | `[agentprinter-fastapi/src/agentprinter_fastapi/router.py:L191-L224](../../../agentprinter-fastapi/src/agentprinter_fastapi/router.py#L191-L224)`, `[Scopes/Work/Tasks/2026-02-01-backend-assign-seq-and-handle-resume.md:L9-L14](../Tasks/2026-02-01-backend-assign-seq-and-handle-resume.md#L9-L14)` | Backend receive loop only routes `user.action`; `protocol.resume` has a schema but no handling path, so reconnect/resume can’t work end-to-end. | Add a `message.type == "protocol.resume"` branch to the WS loop to replay queued messages (bounded) for that session. |
+| 4 | Medium | Reliability | WebSocket connections can leak in manager on early handshake returns | `[agentprinter-fastapi/src/agentprinter_fastapi/router.py:L96-L107](../../../agentprinter-fastapi/src/agentprinter_fastapi/router.py#L96-L107)`, `[agentprinter-fastapi/src/agentprinter_fastapi/router.py:L119-L130](../../../agentprinter-fastapi/src/agentprinter_fastapi/router.py#L119-L130)`, `[agentprinter-fastapi/src/agentprinter_fastapi/router.py:L75-L92](../../../agentprinter-fastapi/src/agentprinter_fastapi/router.py#L75-L92)` | On auth failure / version mismatch, the code `return`s without calling `manager.disconnect(websocket)`; unlike the connection-rate-limit path, this leaves stale entries in `active_connections` until the next broadcast attempts to send and cleans up. | Call `manager.disconnect(websocket)` before each early `return` after close (auth fail, version mismatch). |
+| 5 | Medium | Reliability / perf | HTTP polling “history” is unbounded and never pruned | `[agentprinter-fastapi/src/agentprinter_fastapi/transports.py:L35-L61](../../../agentprinter-fastapi/src/agentprinter_fastapi/transports.py#L35-L61)`, `[agentprinter-fastapi/src/agentprinter_fastapi/transports.py:L67-L85](../../../agentprinter-fastapi/src/agentprinter_fastapi/transports.py#L67-L85)` | `HTTPPollingTransport.enqueue_message()` appends forever; `dequeue_messages()` slices but never removes old entries. Any long-lived session will grow memory without bound. | Keep a bounded ring buffer per session (e.g., cap to N messages) and/or expire old sessions. |
+| 6 | Medium | Foot-gun | Fallback transports default missing `session_id` to `"default"` | `[agentprinter-fastapi/src/agentprinter_fastapi/manager.py:L64-L81](../../../agentprinter-fastapi/src/agentprinter_fastapi/manager.py#L64-L81)`, `[agentprinter-fastapi/src/agentprinter_fastapi/manager.py:L93-L101](../../../agentprinter-fastapi/src/agentprinter_fastapi/manager.py#L93-L101)` | Messages without `header.session_id` get enqueued/broadcast to session `"default"`, which can mix unrelated clients into one polling/SSE stream and makes debugging cross-session leakage harder. | If `session_id` is absent, skip enqueue/broadcast to fallback transports (or derive a stable session id explicitly and document it). |
+| 7 | Low | Robustness | Version query parsing can raise on unexpected `=` | `[agentprinter-fastapi/src/agentprinter_fastapi/router.py:L112-L117](../../../agentprinter-fastapi/src/agentprinter_fastapi/router.py#L112-L117)` | `param.split("=")` without `maxsplit=1` can raise `ValueError` for query segments containing multiple `=`. | Use `split("=", 1)` or a real query parser. |
+| 8 | Low | Maintainability | Repo/workspace includes an `examples/.venv/` with installed packages | `[examples/.venv/lib/python3.12/site-packages/agentprinter_fastapi-0.1.0.dist-info/direct_url.json:L1-L1](../../../examples/.venv/lib/python3.12/site-packages/agentprinter_fastapi-0.1.0.dist-info/direct_url.json#L1-L1)` | Huge workspace bloat and duplicated source copies; easy to accidentally treat vendored code as “the” source of truth. | Ensure `.venv/` is excluded from any packaging / source-of-truth paths (and gitignore it if this becomes a git repo). |
+
+## Reproductions (Commands Run)
+- **Command**: `cd agentprinter-fastapi && uv run pytest`
+  - **Key signal**: `tests/test_resume_handling.py` fails (`2 failed, 93 passed, 2 skipped`) — `test_outbound_message_has_seq`, `test_resume_replays_messages`.
+- **Command**: `cd agentprinter-react && bun test`
+  - **Key signal**: `108 pass`, including resume test expecting `last_seen_version`. `[agentprinter-react/tests/transport-backoff.test.tsx:L87-L155](../../../agentprinter-react/tests/transport-backoff.test.tsx#L87-L155)`
+
+## Recommended Next Actions
+- [ ] Execute existing tasks (already written, align with findings):
+  - [ ] Backend seq + resume replay: `[Scopes/Work/Tasks/2026-02-01-backend-assign-seq-and-handle-resume.md:L1-L43](../Tasks/2026-02-01-backend-assign-seq-and-handle-resume.md#L1-L43)`
+  - [ ] Frontend use `seq` + `last_seen_seq`: `[Scopes/Work/Tasks/2026-02-01-frontend-use-seq-for-ordering-and-resume.md:L1-L38](../Tasks/2026-02-01-frontend-use-seq-for-ordering-and-resume.md#L1-L38)`
+- [ ] Add a small task to **bound/expire** `HTTPPollingTransport.message_queues` (memory safety).
+- [ ] Scope drift cleanup after fixes:
+  - [ ] Update `Scopes/Product/Frontend/Remote_UI_Runtime.md` to stop documenting `last_seen_version` and instead document `seq/last_seen_seq` semantics (or explicitly note current mismatch until fixed).
+
+## Audit Checklist
+- [x] Every finding has at least one real evidence link
+- [x] Any command run is listed verbatim with its key output signal
+- [x] Fix suggestions are minimal and testable
+- [x] Scope drift is explicitly listed with exact target files
+
